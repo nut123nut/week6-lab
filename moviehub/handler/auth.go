@@ -1,5 +1,3 @@
-package handler
-
 import (
     "encoding/json"
     "errors"
@@ -8,47 +6,27 @@ import (
     "unicode/utf8"
 
     "moviehub/auth"
+    "moviehub/mw"
     "moviehub/store"
 )
 
-type registerReq struct {
-    Email       string `json:"email"`
-    Password    string `json:"password"`
-    DisplayName string `json:"displayName"`
-}
+// ... Register และ Login ของเดิมอยู่ตรงนี้ ไม่แตะ ...
 
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-    var req registerReq
-    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-        writeError(w, http.StatusBadRequest, "BAD_JSON", "อ่านกล่อง JSON ไม่ออก")
+// Me (ด่านที่ 4) ตอบข้อมูลของคนที่ถือตั๋ว เลขสมาชิกมาจากตั๋วที่ RequireLogin ตรวจแล้วเท่านั้น
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+    id, ok := mw.MemberID(r.Context())
+    if !ok {
+        writeError(w, http.StatusUnauthorized, "NO_TOKEN", "กรุณาเข้าสู่ระบบก่อน")
         return
     }
-    email := strings.ToLower(strings.TrimSpace(req.Email))
-    name := strings.TrimSpace(req.DisplayName)
-    switch {
-    case !strings.Contains(email, "@") || len(email) > 255:
-        writeError(w, http.StatusBadRequest, "BAD_EMAIL", "รูปแบบอีเมลไม่ถูกต้อง")
-        return
-    case utf8.RuneCountInString(req.Password) < 8 || len(req.Password) > 72:
-        writeError(w, http.StatusBadRequest, "BAD_PASSWORD", "รหัสผ่านต้องยาว 8 ตัวอักษรขึ้นไป และไม่เกิน 72 ไบต์")
-        return
-    case name == "" || utf8.RuneCountInString(name) > 50:
-        writeError(w, http.StatusBadRequest, "BAD_NAME", "ต้องมีชื่อที่แสดง และยาวไม่เกิน 50 ตัวอักษร")
-        return
-    }
-    hash, err := auth.HashPassword(req.Password)
-    if err != nil {
-        internal(w, err)
-        return
-    }
-    m, err := h.Store.CreateMember(r.Context(), email, hash, name)
-    if errors.Is(err, store.ErrEmailTaken) {
-        writeError(w, http.StatusConflict, "EMAIL_TAKEN", "อีเมลนี้มีบัญชีอยู่แล้ว")
+    m, err := h.Store.MemberByID(r.Context(), id)
+    if errors.Is(err, store.ErrNotFound) {
+        writeError(w, http.StatusUnauthorized, "MEMBER_GONE", "ไม่พบบัญชีนี้แล้ว กรุณาเข้าสู่ระบบใหม่")
         return
     }
     if err != nil {
         internal(w, err)
         return
     }
-    writeJSON(w, http.StatusCreated, m)
+    writeJSON(w, http.StatusOK, m)
 }
